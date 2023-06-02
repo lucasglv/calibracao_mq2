@@ -1,1 +1,108 @@
+library(data.table)
+
+# remove old variables
+rm(list=ls())
+
+# set input values
+xlim <- c(100, 10000)
+ylim <- c(0.1, 10)
+minppm <- 0
+maxppm <- 0
+mres <- 0
+mppm <- 0
+
+pointsdata <- "
+SEUS DADOS AQUI!
+"
+
+# load points using fread
+setnames(points <- fread(pointsdata, sep = ",", sep2 = "\n"), c("x", "y"))
+
+# set named list of points, and swapped list of points
+# points will be used to plot and compute values as datasheet figure
+# pointsrev will be used to plot and compute values for the correlation function, it's the datasheet figure with swapped axis
+x <- as.vector(points[, x])
+y <- as.vector(points[, y])
+points <- list(x = x, y = y)
+pointsrev <- list(x = y, y = x)
+
+# the nls (Nonlinear Least Squares) it's used to perform the power regression on points
+# in order to work, nls needs an estimation of starting values
+# we use log-log slope estimation to find initial values
+
+# estimate fit curve initial values
+xfirst <- head(points$x, n = 1)
+xlast <- tail(points$x, n = 1)
+yfirst <- head(points$y, n = 1)
+ylast <- tail(points$y, n = 1)
+bstart <- log(ylast / yfirst) / log(xlast / xfirst)
+astart <- yfirst / (xfirst ^ bstart)
+# perform the fit
+fit <- nls("y ~ a * x^b", start = list(a = astart, b = bstart), data = points)
+
+# estimate fitrev curve initial values
+xfirstrev <- head(pointsrev$x, n = 1)
+xlastrev <- tail(pointsrev$x, n = 1)
+yfirstrev <- head(pointsrev$y, n = 1)
+ylastrev <- tail(pointsrev$y, n = 1)
+bstartrev <- log(ylastrev / yfirstrev) / log(xlastrev / xfirstrev)
+astartrev <- yfirstrev / (xfirstrev ^ bstartrev)
+fitrev <- nls("y ~ a * x^b", start = list(a = astartrev, b = bstartrev), data = pointsrev)
+
+# plot fit curve (log-log scale)
+fiteq <- function(x) { coef(fit)["a"] * x^(coef(fit)["b"]) }
+plot(points, log = "xy", col = "blue", xlab = "ppm", ylab = "Rs/Ro", xlim = xlim, ylim = ylim, panel.first = grid(equilogs = FALSE))
+curve(fiteq, col = "red", add = TRUE)
+
+# plot fitrev curve (log-log scale)
+fiteqrev <- function(x) { coef(fitrev)["a"] * x^(coef(fitrev)["b"]) }
+plot(pointsrev, log = "xy", col = "blue", xlab = "Rs/Ro", ylab = "ppm", xlim = ylim, ylim = xlim, panel.first = grid(equilogs = FALSE))
+curve(fiteqrev, col = "red", add = TRUE)
+
+# plot fit curve (linear scale)
+fiteq <- function(x) { coef(fit)["a"] * x^(coef(fit)["b"]) }
+plot(points, col = "blue", xlab = "ppm", ylab = "Rs/Ro", panel.first = grid(equilogs = FALSE))
+curve(fiteq, col = "red", add = TRUE)
+
+# plot fitrev curve (linear scale)
+fiteqrev <- function(x) { coef(fitrev)["a"] * x^(coef(fitrev)["b"]) }
+plot(pointsrev, col = "blue", xlab = "Rs/Ro", ylab = "ppm", panel.first = grid(equilogs = FALSE))
+curve(fiteqrev, col = "red", add = TRUE)
+
+# estimate min Rs/Ro
+cat("\nCorrelation function coefficients")
+cat("\nEstimated a\n")
+cat("  ")
+cat(coef(fitrev)["a"])
+cat("\nEstimated b\n")
+cat("  ")
+cat(coef(fitrev)["b"])
+cat("\n")
+
+# estimate min Rs/Ro
+if (minppm != 0) {
+  minRsRo <- (maxppm / coef(fitrev)["a"])^(1 / coef(fitrev)["b"])
+  cat("\nEstimated min Rs/Ro\n")
+  cat("  ")
+  cat(minRsRo)
+  cat("\n")
+}
+
+# estimate max Rs/Ro
+if (maxppm != 0) {
+  maxRsRo <- (minppm / coef(fitrev)["a"])^(1 / coef(fitrev)["b"])
+  cat("\nEstimated max Rs/Ro\n")
+  cat("  ")
+  cat(maxRsRo)
+  cat("\n")
+}
+
+# estimate Ro
+if (mppm != 0 && mres != 0) {
+  Ro <- mres * (coef(fitrev)["a"] / mppm)^(1 / coef(fitrev)["b"])
+  cat("\nEstimated Ro\n")
+  cat("  ")
+  cat(Ro)
+  cat("\n")
+}
 
